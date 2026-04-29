@@ -1,0 +1,44 @@
+#![no_std]
+
+use core::arch::global_asm;
+
+// All xv6 assembly is GAS / AT&T syntax. Pass `options(att_syntax)`
+// on every `global_asm!` invocation rather than emitting an
+// `.att_syntax` directive inside each `.S` file (which trips rustc's
+// `bad_asm_style` lint).
+global_asm!(include_str!("asm/swtch.S"),       options(att_syntax));
+global_asm!(include_str!("asm/entry.S"),       options(att_syntax));
+global_asm!(include_str!("asm/entryother.S"),  options(att_syntax));
+global_asm!(include_str!("asm/trapasm.S"),     options(att_syntax));
+global_asm!(include_str!("asm/initcode.S"),    options(att_syntax));
+global_asm!(include_str!("asm/vectors.S"),     options(att_syntax));
+global_asm!(include_str!("asm/usys.S"),        options(att_syntax));
+global_asm!(include_str!("asm/bootasm.S"),     options(att_syntax));
+
+pub mod elf;
+pub mod ioapic;
+pub mod lapic;
+pub mod mmu;
+pub mod mp;
+pub mod registers;
+pub mod traps;
+pub mod vm;
+
+extern "C" {
+    /// Save the callee-saved registers in `*old`, then load the
+    /// callee-saved registers from `new`. Defined in `asm/swtch.S`.
+    pub fn swtch(old: *mut *mut Context, new: *mut Context);
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct Context {
+    pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub r11: u64,
+    pub rbx: u64,
+    pub rbp: u64,
+    pub rip: u64,
+}

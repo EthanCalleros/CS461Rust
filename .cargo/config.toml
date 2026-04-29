@@ -1,0 +1,45 @@
+# Cargo configuration for xv6-Rust.
+#
+# Default build target is x86_64-unknown-none (bare-metal x86_64).
+# This means `cargo check`, `cargo build`, etc. inside the workspace
+# automatically build kernel-side crates for bare metal — no need to
+# pass --target every time.
+#
+# Host-side tools (`mkfs`) need a hosted target instead. Use the
+# `cargo mkfs` alias below, which overrides the target for that one
+# package. On Linux/macOS dev hosts, change the alias target to
+# x86_64-unknown-linux-gnu / x86_64-apple-darwin as appropriate.
+
+[build]
+target = "x86_64-unknown-none"
+
+[unstable]
+# Allow building std-less core for the bare-metal target if an
+# upcoming rust release requires it. Safe to leave; ignored on stable.
+
+# Linker / rustflags applied to every bare-metal build. `-C link-arg`
+# entries that are kernel-binary-specific (like `-T kernel.ld`) belong
+# in `kernel/build.rs`, not here, so they don't leak into library
+# crates.
+[target.x86_64-unknown-none]
+rustflags = [
+    "-C", "code-model=kernel",
+    "-C", "relocation-model=static",
+]
+
+# Aliases ---------------------------------------------------------------
+#
+# `cargo mkfs`     -> build the host-side mkfs tool for the dev machine.
+# `cargo kbuild`   -> shorthand for the kernel-only build.
+# `cargo kcheck`   -> shorthand for the kernel-only check.
+[alias]
+# mkfs is its own standalone workspace, so we point at its manifest
+# explicitly instead of using `-p mkfs` (which only works inside the
+# parent workspace's member set). The explicit `--target` overrides
+# the bare-metal target this workspace's [build] section pins —
+# cargo's config.toml lookup is based on the working directory, not
+# the manifest path, so a `cargo mkfs` invoked from here would
+# otherwise inherit the bare-metal target.
+mkfs    = "build --manifest-path mkfs/Cargo.toml --release --target x86_64-pc-windows-msvc"
+kbuild  = "build -p kernel"
+kcheck  = "check -p kernel"

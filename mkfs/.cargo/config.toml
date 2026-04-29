@@ -1,0 +1,16 @@
+# Standalone cargo config for the mkfs host tool.
+#
+# This explicitly overrides the parent workspace's bare-metal target.
+# Cargo merges config.toml files from the current directory up to the
+# filesystem root, with closer configs taking precedence. Without this
+# explicit `target = ...`, cargo would still inherit the parent's
+# `x86_64-unknown-none` setting and try to build mkfs against it.
+#
+# If you switch dev hosts, change the target triple to your host:
+#   Windows MSVC : x86_64-pc-windows-msvc
+#   Linux        : x86_64-unknown-linux-gnu
+#   macOS Intel  : x86_64-apple-darwin
+#   macOS Apple  : aarch64-apple-darwin
+
+[build]
+target = "x86_64-pc-windows-msvc"

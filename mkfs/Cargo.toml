@@ -1,0 +1,14 @@
+[package]
+name = "mkfs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+# `mkfs` is a host-side tool. Declaring an empty `[workspace]` here
+# makes it a standalone single-crate workspace, decoupled from the
+# kernel-side workspace at the parent directory. That way the parent
+# workspace's bare-metal target (`x86_64-unknown-none`) doesn't apply
+# to mkfs — it picks up `mkfs/.cargo/config.toml` instead and uses
+# the host toolchain.
+[workspace]

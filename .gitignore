@@ -1,0 +1,46 @@
+# Rust / Cargo build output ----------------------------------------
+# Top-level workspace target dir and the standalone mkfs workspace's
+# target dir. Add additional `**/target/` if you ever spin up more
+# nested workspaces.
+/target
+/mkfs/target
+**/*.rs.bk
+
+# Cargo backups / temp files
+Cargo.lock.bak
+*.swp
+*.swo
+
+# Generated kernel / disk images ------------------------------------
+# These are produced by the build, not source.
+*.img
+bootblock
+kernel.elf
+kernel.bin
+fs.img
+xv6.img
+
+# IDE / editor ------------------------------------------------------
+# Track .vscode/settings.json (it pins rust-analyzer's target so the
+# whole team gets consistent diagnostics) but ignore everything else
+# in .vscode/ that's machine-specific.
+/.vscode/*
+!/.vscode/settings.json
+!/.vscode/extensions.json
+
+/.idea/
+*.iml
+
+# rust-analyzer / clippy / rustfmt scratch
+.rust-analyzer/
+
+# OS junk -----------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs --------------------------------------------------------------
+*.log

@@ -1,0 +1,11 @@
+# Pinned toolchain for xv6-Rust.
+#
+# Using stable because `x86_64-unknown-none` and `core::arch::global_asm!`
+# are both stable. Switch the channel to "nightly" only if you need
+# unstable features (e.g. `naked_functions`, `asm_const` on older
+# nightlies, or the unstable `build-std` flag).
+[toolchain]
+channel    = "stable"
+components = ["rustfmt", "clippy", "rust-src"]
+targets    = ["x86_64-unknown-none"]
+profile    = "minimal"

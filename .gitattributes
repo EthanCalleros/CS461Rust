@@ -1,0 +1,41 @@
+# Normalize line endings to LF in the repository while letting each
+# working tree keep its native line endings (CRLF on Windows, LF on
+# Linux/macOS). This eliminates the "LF will be replaced by CRLF"
+# warnings on Windows and keeps diffs sane across platforms.
+* text=auto eol=lf
+
+# Source files — always LF in repo.
+*.rs    text eol=lf
+*.S     text eol=lf
+*.s     text eol=lf
+*.toml  text eol=lf
+*.ld    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+*.pl    text eol=lf
+Makefile text eol=lf
+
+# Windows-specific scripts keep CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binary blobs — never touch line endings, never try to diff as text.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.img   binary
+*.bin   binary
+*.iso   binary
+*.o     binary
+*.a     binary
+*.rlib  binary
+*.so    binary
+*.dll   binary
+*.exe   binary

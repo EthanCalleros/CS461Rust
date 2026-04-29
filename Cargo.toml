@@ -1,0 +1,35 @@
+[workspace]
+# Kernel-side workspace. Every member here builds for
+# `x86_64-unknown-none` (set in .cargo/config.toml) and is `#![no_std]`.
+members = [
+    "kernel",
+    "crates/types",
+    "crates/param",
+    "crates/arch",
+    "crates/mm",
+    "crates/sync",
+    "crates/proc",
+    "crates/fs",
+    "crates/drivers",
+    "crates/console",
+    "crates/syscall",
+    "crates/ulib",
+    "crates/bootblock",
+    "user",
+]
+
+# `mkfs` is a host-side build tool (it runs on the developer's machine
+# to produce fs.img) and therefore needs std and a hosted target. It
+# lives at `mkfs/` next to this manifest but is its OWN cargo
+# workspace so it's never built against `x86_64-unknown-none`. Exclude
+# it explicitly so cargo doesn't try to auto-discover it as a member.
+exclude = ["mkfs"]
+
+resolver = "2"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
