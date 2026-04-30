@@ -2,13 +2,13 @@
 
 use types::{addr_t, uchar, uint, uint32, uint64, ushort};
 
-const ELF_MAGIC: uint = 0x464C457F;
+pub const ELF_MAGIC: uint = 0x464C457F;
 
-const ELF_PROG_LOAD:       i32 = 1;
+pub const ELF_PROG_LOAD:       i32 = 1;
 
-const ELF_PROG_FLAG_EXEC:  i32 = 1;
-const ELF_PROG_FLAG_WRITE: i32 = 2;
-const ELF_PROG_FLAG_READ:  i32 = 4;
+pub const ELF_PROG_FLAG_EXEC:  i32 = 1;
+pub const ELF_PROG_FLAG_WRITE: i32 = 2;
+pub const ELF_PROG_FLAG_READ:  i32 = 4;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -33,12 +33,12 @@ pub struct elfhdr {
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct proghdr {
-    r#type: uint32,
-    flags:  uint64,
-    off:    uint64,
-    vaddr:  uint64,
-    paddr:  uint64,
-    filesz: uint64,
-    memsz:  uint64,
-    align:  uint64,
+    pub r#type: uint32,
+    pub flags:  uint64,
+    pub off:    uint64,
+    pub vaddr:  uint64,
+    pub paddr:  uint64,
+    pub filesz: uint64,
+    pub memsz:  uint64,
+    pub align:  uint64,
 }

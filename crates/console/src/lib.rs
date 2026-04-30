@@ -77,7 +77,7 @@ impl Write for ConsoleWriter {
 }
 
 /// The Rust version of cprintf
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe fn cprintf(args: fmt::Arguments) {
     let locking = CONS.locking;
     if locking {

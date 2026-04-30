@@ -3,10 +3,96 @@ name = "user"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+ulib = { path = "../crates/ulib" }
+types = { path = "../crates/types" }
+
 [[bin]]
-name = "user"
-path = "src/main.rs"
+name = "cat"
+path = "src/cat.rs"
 test = false
 bench = false
 
-[dependencies]
+[[bin]]
+name = "echo"
+path = "src/echo.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "forktest"
+path = "src/forktest.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "grep"
+path = "src/grep.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "init"
+path = "src/init.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kill"
+path = "src/kill.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "ln"
+path = "src/ln.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "ls"
+path = "src/ls.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "mkdir"
+path = "src/mkdir.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "rm"
+path = "src/rm.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "sh"
+path = "src/sh.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "stressfs"
+path = "src/stressfs.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "usertests"
+path = "src/usertests.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "wc"
+path = "src/wc.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "zombie"
+path = "src/zombie.rs"
+test = false
+bench = false
