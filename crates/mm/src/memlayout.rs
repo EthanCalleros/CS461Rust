@@ -1,41 +1,65 @@
-// Memory layout constants
+//! Memory layout constants and address-translation helpers (port of
+//! `memlayout.h`). Function names are kept in upper case to match the
+//! upstream xv6 macros (`V2P`, `P2V`, `PGROUNDUP`, ...).
 
-/// Start of extended memory (1MB)
-pub const EXTMEM: usize = 0x100000;
+#![allow(non_snake_case)]
 
-/// Top physical memory (224MB)
-pub const PHYSTOP: usize = 0xE000000;
+use types::addr_t;
+use arch::mmu::{PGROUNDDOWN, PGROUNDUP};
+// ---------------------------------------------------------------------
+// Memory map constants
+// ---------------------------------------------------------------------
 
-/// First kernel virtual address
-pub const KERNBASE: usize = 0xFFFF800000000000;
+/// Start of extended memory (1 MiB).
+pub const EXTMEM: addr_t = 0x100000;
 
-/// Address where kernel is linked
-pub const KERNLINK: usize = KERNBASE + EXTMEM;
+/// Top of physical memory (224 MiB) — anything above this is reserved.
+pub const PHYSTOP: addr_t = 0xE000000;
 
-// Page constants (usually defined in mmu.h in C, but often used here)
-pub const PGSIZE: usize = 4096;
+/// First kernel virtual address.
+///
+/// NOTE: verify this against your specific xv6-64 source — UIC's
+/// xv6-64 uses `0xFFFFFFFF80000000` (top-2GB higher half). Other ports
+/// vary. Adjust if your `memlayout.h` says otherwise.
+pub const KERNBASE: addr_t = 0xFFFF_8000_0000_0000;
 
+/// Address where the kernel image is linked.
+pub const KERNLINK: addr_t = KERNBASE + EXTMEM;
 
-/// Virtual to Physical
+// ---------------------------------------------------------------------
+// Page-size constants
+// ---------------------------------------------------------------------
+// In xv6 these live in `mmu.h`, but kalloc.c uses them so we re-export
+// them from here for now. Once `arch::mmu` has them defined, switch
+// the imports to use that source of truth.
+
+/// 4 KiB page size.
+pub const PGSIZE: addr_t = 4096;
+
+// ---------------------------------------------------------------------
+// Address translation
+// ---------------------------------------------------------------------
+
+/// Virtual to physical (kernel direct map).
 #[inline(always)]
-pub fn V2P(a: usize) -> usize {
+pub fn V2P(a: addr_t) -> addr_t {
     a.wrapping_sub(KERNBASE)
 }
 
-/// Physical to Virtual
+/// Physical to virtual (kernel direct map).
 #[inline(always)]
-pub fn P2V(a: usize) -> usize {
+pub fn P2V(a: addr_t) -> addr_t {
     a.wrapping_add(KERNBASE)
 }
 
-/// Version of V2P for raw pointers
+/// `V2P` for raw pointers.
 #[inline(always)]
-pub fn v2p_ptr<T>(a: *const T) -> usize {
-    (a as usize).wrapping_sub(KERNBASE)
+pub fn v2p_ptr<T>(a: *const T) -> addr_t {
+    (a as addr_t).wrapping_sub(KERNBASE)
 }
 
-/// Version of P2V returning a raw pointer
+/// `P2V` returning a raw pointer.
 #[inline(always)]
-pub fn p2v_ptr<T>(a: usize) -> *mut T {
-    (a.wrapping_add(KERNBASE)) as *mut T
+pub fn p2v_ptr<T>(a: addr_t) -> *mut T {
+    a.wrapping_add(KERNBASE) as *mut T
 }

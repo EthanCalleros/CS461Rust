@@ -24,6 +24,9 @@ version = "0.1.0"
 [[package]]
 name = "fs"
 version = "0.1.0"
+dependencies = [
+ "types",
+]
 
 [[package]]
 name = "kernel"
@@ -32,18 +35,34 @@ version = "0.1.0"
 [[package]]
 name = "mm"
 version = "0.1.0"
+dependencies = [
+ "arch",
+ "sync",
+ "types",
+]
 
 [[package]]
 name = "param"
 version = "0.1.0"
+dependencies = [
+ "types",
+]
 
 [[package]]
 name = "proc"
 version = "0.1.0"
+dependencies = [
+ "param",
+ "types",
+]
 
 [[package]]
 name = "sync"
 version = "0.1.0"
+dependencies = [
+ "proc",
+ "types",
+]
 
 [[package]]
 name = "syscall"

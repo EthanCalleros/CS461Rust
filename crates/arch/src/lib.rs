@@ -42,3 +42,5 @@ pub struct Context {
     pub rbp: u64,
     pub rip: u64,
 }
+
+pub use registers::*;

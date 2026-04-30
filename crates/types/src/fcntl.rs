@@ -1,4 +1,7 @@
-const O_RDONLY: i32 = 0x000;
-const O_WRONLY: i32 = 0x001;
-const O_RDWR:   i32 = 0x002;
-const O_CREATE: i32 = 0x200;
+//! Port of `fcntl.h` — flag bits for the `open` syscall's `omode`
+//! argument.
+
+pub const O_RDONLY: i32 = 0x000;
+pub const O_WRONLY: i32 = 0x001;
+pub const O_RDWR:   i32 = 0x002;
+pub const O_CREATE: i32 = 0x200;
