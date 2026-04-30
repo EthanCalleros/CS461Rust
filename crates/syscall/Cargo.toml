@@ -9,3 +9,7 @@ doctest = false
 bench = false
 
 [dependencies]
+proc  = { path = "../proc" }
+param = { path = "../param" }
+types = { path = "../types" }
+arch  = { path = "../arch" }

@@ -1,9 +1,13 @@
+//! Port of the `struct spinlock` definition from `spinlock.h`.
+
+#![allow(non_camel_case_types)]
+
+use proc::Cpu;
 use types::{addr_t, uint};
-use crate::spinlock;
 
 pub struct spinlock {
-    locked: uint,
-    name: &'static str,
-    cpu: *mut Cpu,
-    pcs: [addr_t; 10],
+    pub locked: uint,
+    pub name:   &'static str,
+    pub cpu:    *mut Cpu,
+    pub pcs:    [addr_t; 10],
 }

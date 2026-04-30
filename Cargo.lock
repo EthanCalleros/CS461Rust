@@ -52,6 +52,7 @@ dependencies = [
 name = "proc"
 version = "0.1.0"
 dependencies = [
+ "arch",
  "param",
  "types",
 ]
@@ -67,6 +68,12 @@ dependencies = [
 [[package]]
 name = "syscall"
 version = "0.1.0"
+dependencies = [
+ "arch",
+ "param",
+ "proc",
+ "types",
+]
 
 [[package]]
 name = "types"

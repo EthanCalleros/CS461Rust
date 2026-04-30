@@ -11,3 +11,6 @@ bench = false
 [dependencies]
 types = { path = "../types" }
 param = { path = "../param" }
+# `arch` is the kernel's hardware-abstraction crate; its `registers`
+# module ports `x86.h`. Reach for it as `arch::registers::xchg`, etc.
+arch = { path = "../arch" }
