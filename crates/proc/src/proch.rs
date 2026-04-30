@@ -114,8 +114,8 @@ pub struct proc {
 // ---------------------------------------------------------------------
 
 unsafe extern "C" {
-    pub static mut cpus: [Cpu; NCPU as usize];
-    pub static mut ncpu: i32;
+    pub unsafe static mut cpus: [Cpu; NCPU as usize];
+    pub unsafe static mut ncpu: i32;
 }
 
 // ---------------------------------------------------------------------
