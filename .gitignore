@@ -12,11 +12,18 @@ Cargo.lock.bak
 *.swo
 
 # Generated kernel / disk images ------------------------------------
-# These are produced by the build, not source.
+# Build artifacts produced by `make` / `cargo run` / linker passes.
+# IMPORTANT: do NOT add bare names like `bootblock`, `kernel`, or
+# `mkfs` here. Those would also match the crate directories
+# `crates/bootblock/`, `kernel/`, `mkfs/` (gitignore patterns without
+# slashes match by basename anywhere in the tree) and silently un-
+# track entire crates.
+#
+# Compiled cargo output already lives under `/target/`, which is
+# ignored above. Only call out free-standing artifacts here.
 *.img
-bootblock
-kernel.elf
-kernel.bin
+*.elf
+*.bin
 fs.img
 xv6.img
 
