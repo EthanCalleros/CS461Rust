@@ -10,3 +10,9 @@ test = false
 bench = false
 
 [dependencies]
+arch  = { path = "../crates/arch" }
+mm    = { path = "../crates/mm" }
+proc  = { path = "../crates/proc" }
+sync  = { path = "../crates/sync" }
+param = { path = "../crates/param" }
+types = { path = "../crates/types" }
