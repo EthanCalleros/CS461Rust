@@ -9,3 +9,6 @@ doctest = false
 bench = false
 
 [dependencies]
+sync = { path = "../sync" }
+arch = { path = "../arch" }
+types = { path = "../types"}

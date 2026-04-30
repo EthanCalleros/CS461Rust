@@ -1,3 +1,6 @@
 #![no_std]
 
 //! Process table, scheduler, and exec (proc.c, exec.c).
+pub mod exec;
+pub mod proc;
+pub mod proch;

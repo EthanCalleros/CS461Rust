@@ -9,3 +9,5 @@ doctest = false
 bench = false
 
 [dependencies]
+types = { path = "../types" }
+param = { path = "../param" }
