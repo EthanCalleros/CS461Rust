@@ -1,5 +1,4 @@
-use crate::lib::{outb, inb}; // Assuming these are in your lib.rs or arch crate
-use core::ptr;
+use arch::registers::{outb, inb};
 
 const COM1: u16 = 0x3f8;
 

@@ -1,44 +1,71 @@
-use types::{addr_t, uint, ushort};
+//! On-disk file system format (port of fs.h).
+//! Both the kernel and user programs use these definitions.
+
+#![allow(non_camel_case_types)]
+#![allow(non_upper_case_globals)]
+#![allow(dead_code)]
+
+use types::uint;
+use param::BSIZE;
 use core::mem::size_of;
 
-const ROOTINO: i32   = 1;
-const BSIZE: i32     = 512;
+pub const ROOTINO: u32 = 1;
 
-const NDIRECT: i32   = 12;
-const NINDIRECT: uint = (BSIZE / size_of::<uint>() as i32) as uint;
-const MAXFILE: i32   = NDIRECT + (NINDIRECT as i32);
+pub const NDIRECT: usize = 12;
+pub const NINDIRECT: usize = BSIZE / size_of::<uint>();
+pub const MAXFILE: usize = NDIRECT + NINDIRECT;
 
-pub struct superblock {
-    pub size:       uint,
-    pub nblocks:    uint,
-    pub ninodes:    uint,
-    pub nlog:       uint,
-    pub logstart:   uint,
-    pub inodestart: uint,
-    pub bmapstart:  uint,
+pub const DIRSIZ: usize = 14;
+
+/// Disk layout:
+/// [ boot block | super block | log | inode blocks |
+///                                          free bit map | data blocks]
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Superblock {
+    pub size:       uint, // Size of file system image (blocks)
+    pub nblocks:    uint, // Number of data blocks
+    pub ninodes:    uint, // Number of inodes
+    pub nlog:       uint, // Number of log blocks
+    pub logstart:   uint, // Block number of first log block
+    pub inodestart: uint, // Block number of first inode block
+    pub bmapstart:  uint, // Block number of first free map block
 }
 
-pub struct dinode {
-    pub r#type:      i16,
-    pub major:       i16,
-    pub minor:       i16,
-    pub nlink:       i16,
-    pub size:        uint,
-    pub addrs:       [uint; (NDIRECT+1) as usize],
+/// On-disk inode structure.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Dinode {
+    pub itype:  i16,                        // File type
+    pub major:  i16,                        // Major device number (T_DEV only)
+    pub minor:  i16,                        // Minor device number (T_DEV only)
+    pub nlink:  i16,                        // Number of links to inode
+    pub size:   uint,                       // Size of file (bytes)
+    pub addrs:  [uint; NDIRECT + 1],        // Data block addresses
 }
 
-const IPB:uint      = (BSIZE / size_of::<dinode>() as i32) as uint;
-pub const fn IBLOCK(i: i32, sb: superblock) -> i32{
-    (i/(IPB as i32)) + sb.inodestart as i32
-}
-const BPB: uint     = (BSIZE*8) as uint;
-pub const fn BBLOCK(b: i32, sb: superblock) -> i32{
-    (b/(BPB as i32)) + sb.bmapstart as i32
-}
-const DIRSIZE: uint = 14;
-
-pub struct dirent {
-    inum: ushort,
-    name: [char; DIRSIZE as usize]
+/// Directory entry.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Dirent {
+    pub inum: u16,
+    pub name: [u8; DIRSIZ],
 }
 
+/// Inodes per block.
+pub const IPB: usize = BSIZE / size_of::<Dinode>();
+
+/// Block containing inode i.
+#[inline]
+pub const fn iblock(i: u32, sb: &Superblock) -> u32 {
+    i / (IPB as u32) + sb.inodestart
+}
+
+/// Bitmap bits per block.
+pub const BPB: u32 = (BSIZE * 8) as u32;
+
+/// Block of free map containing bit for block b.
+#[inline]
+pub const fn bblock(b: u32, sb: &Superblock) -> u32 {
+    b / BPB + sb.bmapstart
+}

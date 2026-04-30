@@ -1,4 +1,4 @@
-use crate::lib::{inb}; // Your port I/O helpers
+use arch::registers::inb;
 
 // PC keyboard interface constants (from kbd.h)
 const KBSTATP: u16 = 0x64; // Status port

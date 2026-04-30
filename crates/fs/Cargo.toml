@@ -10,3 +10,5 @@ bench = false
 
 [dependencies]
 types = { path = "../types" }
+param = { path = "../param" }
+sync = { path = "../sync" }

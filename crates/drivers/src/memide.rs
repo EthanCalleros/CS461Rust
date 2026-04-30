@@ -1,7 +1,6 @@
-use crate::lib::memmove;
-use fs::buf::{Buf, B_DIRTY, B_VALID};
-use types::{BSIZE};
 use core::ptr;
+use fs::buf::{Buf, B_DIRTY, B_VALID};
+use param::BSIZE;
 
 // These symbols are typically provided by objcopy or the linker 
 // when embedding a binary file (like fs.img).

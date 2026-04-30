@@ -1,7 +1,7 @@
-use crate::lib::{inb, outb, insl, outsl};
+use arch::registers::{inb, outb, insl, outsl};
 use sync::spinlock::Spinlock;
 use fs::buf::{Buf, B_DIRTY, B_VALID};
-use types::{BSIZE, FSSIZE};
+use param::{BSIZE, FSSIZE};
 use core::ptr;
 
 // IDE Constants

@@ -42,13 +42,13 @@ pub const PGSIZE: addr_t = 4096;
 
 /// Virtual to physical (kernel direct map).
 #[inline(always)]
-pub fn V2P(a: addr_t) -> addr_t {
+pub const fn V2P(a: addr_t) -> addr_t {
     a.wrapping_sub(KERNBASE)
 }
 
 /// Physical to virtual (kernel direct map).
 #[inline(always)]
-pub fn P2V(a: addr_t) -> addr_t {
+pub const fn P2V(a: addr_t) -> addr_t {
     a.wrapping_add(KERNBASE)
 }
 

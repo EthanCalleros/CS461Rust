@@ -16,3 +16,4 @@ pub const MAXOPBLOCKS: uint = 10;
 pub const LOGSIZE: uint     = (MAXOPBLOCKS*3);
 pub const NBUF: uint        = (MAXOPBLOCKS*3);
 pub const FSSIZE: uint      = 1000;
+pub const BSIZE: usize      = 512;

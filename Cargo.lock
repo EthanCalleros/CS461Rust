@@ -16,15 +16,30 @@ version = "0.1.0"
 [[package]]
 name = "console"
 version = "0.1.0"
+dependencies = [
+ "arch",
+ "drivers",
+ "mm",
+ "sync",
+]
 
 [[package]]
 name = "drivers"
 version = "0.1.0"
+dependencies = [
+ "arch",
+ "fs",
+ "param",
+ "sync",
+ "types",
+]
 
 [[package]]
 name = "fs"
 version = "0.1.0"
 dependencies = [
+ "param",
+ "sync",
  "types",
 ]
 
