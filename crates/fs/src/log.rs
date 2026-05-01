@@ -1,17 +1,9 @@
 //! Logging layer (port of log.c).
 //!
-//! Simple logging that allows concurrent FS system calls.
-//! A log transaction contains the updates of multiple FS system calls.
-//! The logging system only commits when there are no FS system calls active.
-//!
-//! A system call should call begin_op()/end_op() to mark its start and end.
-//! The log is a physical re-do log containing disk blocks.
-//!
-//! On-disk log format:
-//!   header block, containing block #s for block A, B, C, ...
-//!   block A
-//!   block B
-//!   ...
+//! Idiomatic Rust improvements:
+//! - Uses `BufGuard` for automatic buffer release (no forgotten brelse).
+//! - Transaction state tracked with clear bool fields.
+//! - Log header read/write use safe slice operations where possible.
 
 #![allow(static_mut_refs)]
 #![allow(unsafe_op_in_unsafe_fn)]
@@ -20,11 +12,11 @@ use core::ptr;
 use core::ffi::c_void;
 
 use param::{BSIZE, LOGSIZE, MAXOPBLOCKS};
-use crate::buf::{Buf, B_DIRTY};
+use crate::buf::{Buf, BufGuard, B_DIRTY};
 use crate::fsh::Superblock;
 use sync::spinlockh::spinlock;
 
-// External functions (from other crates, linked at final link time)
+// External functions (from other crates)
 unsafe extern "C" {
     unsafe fn initlock(lk: *mut spinlock, name: *const u8);
     unsafe fn acquire(lk: *mut spinlock);
@@ -33,12 +25,11 @@ unsafe extern "C" {
     unsafe fn wakeup(chan: *mut c_void);
 }
 
-// Intra-crate functions
-use crate::bio::{bread, bwrite, brelse};
+// Intra-crate
+use crate::bio;
 use crate::fs::readsb;
 
-/// Contents of the header block, used for both the on-disk header block
-/// and to keep track in memory of logged block #s before commit.
+/// Contents of the header block — maps logged block numbers.
 #[repr(C)]
 struct LogHeader {
     n:     i32,
@@ -51,21 +42,99 @@ struct Log {
     lock:        spinlock,
     start:       i32,
     size:        i32,
-    outstanding: i32, // how many FS sys calls are executing
-    committing:  i32, // in commit(), please wait
+    outstanding: i32,   // how many FS sys calls are executing
+    committing:  bool,  // in commit(), please wait
     dev:         i32,
     lh:          LogHeader,
 }
 
-// Storage for the global log structure (zero-initialized).
+// Zero-initialized log storage.
 #[repr(C, align(16))]
 struct LogStorage([u8; core::mem::size_of::<Log>()]);
 static mut LOG_STORAGE: LogStorage = LogStorage([0u8; core::mem::size_of::<Log>()]);
 
 #[inline]
-unsafe fn log_ptr() -> *mut Log {
-    &raw mut LOG_STORAGE as *mut _ as *mut Log
+unsafe fn log() -> &'static mut Log {
+    &mut *(&raw mut LOG_STORAGE as *mut _ as *mut Log)
 }
+
+// -----------------------------------------------------------------------
+// Internal implementation using BufGuard
+// -----------------------------------------------------------------------
+
+/// Copy committed blocks from log to their home location.
+unsafe fn install_trans() {
+    let lg = log();
+    for tail in 0..lg.lh.n as usize {
+        // BufGuard ensures both buffers are released even on panic.
+        let lbuf = bio::read(lg.dev as u32, (lg.start + tail as i32 + 1) as u32);
+        let mut dbuf = bio::read(lg.dev as u32, lg.lh.block[tail] as u32);
+        dbuf.data.copy_from_slice(&lbuf.data);
+        bio::write(&mut dbuf);
+        // Both lbuf and dbuf auto-released here via Drop.
+    }
+}
+
+/// Read the log header from disk into the in-memory log header.
+unsafe fn read_head() {
+    let lg = log();
+    let buf = bio::read(lg.dev as u32, lg.start as u32);
+    let lh = buf.data.as_ptr() as *const LogHeader;
+    lg.lh.n = (*lh).n;
+    for i in 0..lg.lh.n as usize {
+        lg.lh.block[i] = (*lh).block[i];
+    }
+    // buf auto-released via Drop.
+}
+
+/// Write in-memory log header to disk.
+/// This is the true commit point of the current transaction.
+unsafe fn write_head() {
+    let lg = log();
+    let mut buf = bio::read(lg.dev as u32, lg.start as u32);
+    let hb = buf.data.as_mut_ptr() as *mut LogHeader;
+    (*hb).n = lg.lh.n;
+    for i in 0..lg.lh.n as usize {
+        (*hb).block[i] = lg.lh.block[i];
+    }
+    bio::write(&mut buf);
+    // buf auto-released via Drop.
+}
+
+/// Recover from a crash by replaying the log.
+unsafe fn recover_from_log() {
+    read_head();
+    install_trans(); // if committed, copy from log to disk
+    log().lh.n = 0;
+    write_head(); // clear the log
+}
+
+/// Copy modified blocks from cache to log.
+unsafe fn write_log() {
+    let lg = log();
+    for tail in 0..lg.lh.n as usize {
+        let from = bio::read(lg.dev as u32, lg.lh.block[tail] as u32);
+        let mut to = bio::read(lg.dev as u32, (lg.start + tail as i32 + 1) as u32);
+        to.data.copy_from_slice(&from.data);
+        bio::write(&mut to);
+        // Both `from` and `to` auto-released via Drop.
+    }
+}
+
+/// Perform the actual commit.
+unsafe fn commit() {
+    if log().lh.n > 0 {
+        write_log();     // Write modified blocks from cache to log
+        write_head();    // Write header to disk — the real commit
+        install_trans(); // Install writes to home locations
+        log().lh.n = 0;
+        write_head();    // Erase the transaction from the log
+    }
+}
+
+// -----------------------------------------------------------------------
+// Public API
+// -----------------------------------------------------------------------
 
 /// Initialize the log. Called once at boot.
 #[unsafe(no_mangle)]
@@ -74,81 +143,30 @@ pub unsafe extern "C" fn initlog(dev: i32) {
         panic!("initlog: too big logheader");
     }
 
-    let log = &mut *log_ptr();
+    let lg = log();
     let mut sb: Superblock = core::mem::zeroed();
-    initlock(&raw mut log.lock, b"log\0".as_ptr());
+    initlock(&raw mut lg.lock, b"log\0".as_ptr());
     readsb(dev, &raw mut sb);
-    log.start = sb.logstart as i32;
-    log.size = sb.nlog as i32;
-    log.dev = dev;
+    lg.start = sb.logstart as i32;
+    lg.size = sb.nlog as i32;
+    lg.dev = dev;
     recover_from_log();
 }
 
-/// Copy committed blocks from log to their home location.
-unsafe fn install_trans() {
-    let log = &mut *log_ptr();
-    for tail in 0..log.lh.n {
-        let lbuf = bread(log.dev as u32, (log.start + tail + 1) as u32);
-        let dbuf = bread(log.dev as u32, log.lh.block[tail as usize] as u32);
-        ptr::copy_nonoverlapping(
-            (*lbuf).data.as_ptr(),
-            (*dbuf).data.as_mut_ptr(),
-            BSIZE,
-        );
-        bwrite(dbuf);
-        brelse(lbuf);
-        brelse(dbuf);
-    }
-}
-
-/// Read the log header from disk into the in-memory log header.
-unsafe fn read_head() {
-    let log = &mut *log_ptr();
-    let buf = bread(log.dev as u32, log.start as u32);
-    let lh = (*buf).data.as_ptr() as *const LogHeader;
-    log.lh.n = (*lh).n;
-    for i in 0..log.lh.n as usize {
-        log.lh.block[i] = (*lh).block[i];
-    }
-    brelse(buf);
-}
-
-/// Write in-memory log header to disk.
-/// This is the true point at which the current transaction commits.
-unsafe fn write_head() {
-    let log = &mut *log_ptr();
-    let buf = bread(log.dev as u32, log.start as u32);
-    let hb = (*buf).data.as_mut_ptr() as *mut LogHeader;
-    (*hb).n = log.lh.n;
-    for i in 0..log.lh.n as usize {
-        (*hb).block[i] = log.lh.block[i];
-    }
-    bwrite(buf);
-    brelse(buf);
-}
-
-unsafe fn recover_from_log() {
-    read_head();
-    install_trans(); // if committed, copy from log to disk
-    let log = &mut *log_ptr();
-    log.lh.n = 0;
-    write_head(); // clear the log
-}
-
 /// Called at the start of each FS system call.
+/// May block if the log is close to full or a commit is in progress.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn begin_op() {
-    let log = &mut *log_ptr();
-    acquire(&raw mut log.lock);
+    let lg = log();
+    acquire(&raw mut lg.lock);
     loop {
-        if log.committing != 0 {
-            sleep(log_ptr() as *mut c_void, &raw mut log.lock);
-        } else if log.lh.n + (log.outstanding + 1) * (MAXOPBLOCKS as i32) > LOGSIZE as i32 {
-            // this op might exhaust log space; wait for commit.
-            sleep(log_ptr() as *mut c_void, &raw mut log.lock);
+        if lg.committing {
+            sleep(log() as *mut Log as *mut c_void, &raw mut lg.lock);
+        } else if lg.lh.n + (lg.outstanding + 1) * (MAXOPBLOCKS as i32) > LOGSIZE as i32 {
+            sleep(log() as *mut Log as *mut c_void, &raw mut lg.lock);
         } else {
-            log.outstanding += 1;
-            release(&raw mut log.lock);
+            lg.outstanding += 1;
+            release(&raw mut lg.lock);
             break;
         }
     }
@@ -158,93 +176,63 @@ pub unsafe extern "C" fn begin_op() {
 /// Commits if this was the last outstanding operation.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn end_op() {
-    let log = &mut *log_ptr();
-    let mut do_commit = false;
+    let lg = log();
+    let do_commit;
 
-    acquire(&raw mut log.lock);
-    log.outstanding -= 1;
-    if log.committing != 0 {
+    acquire(&raw mut lg.lock);
+    lg.outstanding -= 1;
+    if lg.committing {
         panic!("log.committing");
     }
-    if log.outstanding == 0 {
+    if lg.outstanding == 0 {
         do_commit = true;
-        log.committing = 1;
+        lg.committing = true;
     } else {
-        // begin_op() may be waiting for log space.
-        wakeup(log_ptr() as *mut c_void);
+        do_commit = false;
+        wakeup(log() as *mut Log as *mut c_void);
     }
-    release(&raw mut log.lock);
+    release(&raw mut lg.lock);
 
     if do_commit {
         commit();
-        acquire(&raw mut log.lock);
-        log.committing = 0;
-        wakeup(log_ptr() as *mut c_void);
-        release(&raw mut log.lock);
+        acquire(&raw mut lg.lock);
+        lg.committing = false;
+        wakeup(log() as *mut Log as *mut c_void);
+        release(&raw mut lg.lock);
     }
 }
 
-/// Copy modified blocks from cache to log.
-unsafe fn write_log() {
-    let log = &mut *log_ptr();
-    for tail in 0..log.lh.n {
-        let to = bread(log.dev as u32, (log.start + tail + 1) as u32);
-        let from = bread(log.dev as u32, log.lh.block[tail as usize] as u32);
-        ptr::copy_nonoverlapping(
-            (*from).data.as_ptr(),
-            (*to).data.as_mut_ptr(),
-            BSIZE,
-        );
-        bwrite(to);
-        brelse(from);
-        brelse(to);
-    }
-}
-
-unsafe fn commit() {
-    let log = &mut *log_ptr();
-    if log.lh.n > 0 {
-        write_log();     // Write modified blocks from cache to log
-        write_head();    // Write header to disk -- the real commit
-        install_trans(); // Now install writes to home locations
-        log.lh.n = 0;
-        write_head();    // Erase the transaction from the log
-    }
-}
-
-/// Caller has modified b->data and is done with the buffer.
-/// Record the block number and pin in the cache with B_DIRTY.
-/// commit()/write_log() will do the disk write.
+/// Record a block number for write-back during commit.
+/// Replaces `bwrite()` in logged operations.
 ///
-/// log_write() replaces bwrite(); a typical use is:
-///   bp = bread(...)
-///   modify bp->data[]
-///   log_write(bp)
-///   brelse(bp)
+/// Caller has modified `b->data` and is done with the buffer.
+/// The actual disk write happens later during `commit()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn log_write(b: *mut Buf) {
-    let log = &mut *log_ptr();
+    let lg = log();
 
-    if log.lh.n >= LOGSIZE as i32 || log.lh.n >= log.size - 1 {
+    if lg.lh.n >= LOGSIZE as i32 || lg.lh.n >= lg.size - 1 {
         panic!("too big a transaction");
     }
-    if log.outstanding < 1 {
+    if lg.outstanding < 1 {
         panic!("log_write outside of trans");
     }
 
-    acquire(&raw mut log.lock);
+    acquire(&raw mut lg.lock);
+
+    // Check for log absorption (same block already logged).
     let mut i = 0i32;
-    while i < log.lh.n {
-        if log.lh.block[i as usize] == (*b).blockno as i32 {
-            // log absorption
+    while i < lg.lh.n {
+        if lg.lh.block[i as usize] == (*b).blockno as i32 {
             break;
         }
         i += 1;
     }
-    log.lh.block[i as usize] = (*b).blockno as i32;
-    if i == log.lh.n {
-        log.lh.n += 1;
+    lg.lh.block[i as usize] = (*b).blockno as i32;
+    if i == lg.lh.n {
+        lg.lh.n += 1; // new block logged
     }
-    (*b).flags |= B_DIRTY; // prevent eviction
-    release(&raw mut log.lock);
+    (*b).flags |= B_DIRTY; // prevent eviction from cache
+
+    release(&raw mut lg.lock);
 }

@@ -5,9 +5,11 @@
 use proc::Cpu;
 use types::{addr_t, uint};
 
+/// C-compatible spinlock. Layout must match `proc::proc::spinlock` exactly.
+#[repr(C)]
 pub struct spinlock {
     pub locked: uint,
-    pub name:   &'static str,
+    pub name:   *const u8,
     pub cpu:    *mut Cpu,
     pub pcs:    [addr_t; 10],
 }

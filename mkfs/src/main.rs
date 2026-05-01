@@ -3,9 +3,80 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::mem;
 
-// Import your xv6 structures
-// Note: You may need to add #[repr(C)] to these in your crates/types
-use types::{Superblock, Dinode, Dirent, stat, BSIZE, FSSIZE, IPB, LOGSIZE, ROOTINO, T_DIR, T_FILE, NDIRECT, NINDIRECT, MAXFILE, DIRSIZ};
+// FS constants (mirrored from param and fs.h — mkfs is a standalone host tool)
+const BSIZE: usize = 512;
+const FSSIZE: u32 = 2000;
+const LOGSIZE: u32 = 30; // MAXOPBLOCKS(10) * 3
+const ROOTINO: u32 = 1;
+const NDIRECT: usize = 12;
+const NINDIRECT: usize = BSIZE / mem::size_of::<u32>();
+const MAXFILE: usize = NDIRECT + NINDIRECT;
+const DIRSIZ: usize = 14;
+const IPB: usize = BSIZE / mem::size_of::<Dinode>();
+const T_DIR: i16 = 1;
+const T_FILE: i16 = 2;
+
+// On-disk structures (must match kernel layout exactly)
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Superblock {
+    size:       u32,
+    nblocks:    u32,
+    ninodes:    u32,
+    nlog:       u32,
+    logstart:   u32,
+    inodestart: u32,
+    bmapstart:  u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Dinode {
+    itype:  i16,
+    major:  i16,
+    minor:  i16,
+    nlink:  i16,
+    size:   u32,
+    addrs:  [u32; NDIRECT + 1],
+}
+
+impl Default for Dinode {
+    fn default() -> Self {
+        Self {
+            itype: 0, major: 0, minor: 0, nlink: 0, size: 0,
+            addrs: [0; NDIRECT + 1],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Dirent {
+    inum: u16,
+    name: [u8; DIRSIZ],
+}
+
+impl Default for Dirent {
+    fn default() -> Self {
+        Self { inum: 0, name: [0u8; DIRSIZ] }
+    }
+}
+
+impl Dirent {
+    fn set_name(&mut self, s: &str) {
+        self.name = [0u8; DIRSIZ];
+        let bytes = s.as_bytes();
+        let len = bytes.len().min(DIRSIZ);
+        self.name[..len].copy_from_slice(&bytes[..len]);
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            core::slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<Dirent>())
+        }
+    }
+}
 
 struct Mkfs {
     file: File,
@@ -24,26 +95,26 @@ impl Mkfs {
             .open(img_path)?;
 
         // Standard xv6 layout calculation
-        let n_inode_blocks = (200 / IPB) + 1;
-        let n_bitmap = FSSIZE / (BSIZE * 8) + 1;
+        let n_inode_blocks = (200 / IPB as u32) + 1;
+        let n_bitmap = FSSIZE / (BSIZE as u32 * 8) + 1;
         let n_meta = 2 + LOGSIZE + n_inode_blocks + n_bitmap;
-        let n_blocks = FSSIZE as u32 - n_meta as u32;
+        let n_blocks = FSSIZE - n_meta;
 
         let sb = Superblock {
-            size: FSSIZE as u32,
+            size: FSSIZE,
             nblocks: n_blocks,
             ninodes: 200,
-            nlog: LOGSIZE as u32,
+            nlog: LOGSIZE,
             logstart: 2,
-            inodestart: 2 + LOGSIZE as u32,
-            bmapstart: 2 + LOGSIZE as u32 + n_inode_blocks as u32,
+            inodestart: 2 + LOGSIZE,
+            bmapstart: 2 + LOGSIZE + n_inode_blocks,
         };
 
         Ok(Mkfs {
             file,
             sb,
             free_inode: 1,
-            free_block: n_meta as u32,
+            free_block: n_meta,
         })
     }
 
@@ -51,7 +122,6 @@ impl Mkfs {
         assert!(data.len() <= BSIZE);
         self.file.seek(SeekFrom::Start((sec as u64) * (BSIZE as u64)))?;
         self.file.write_all(data)?;
-        // Ensure the sector is exactly BSIZE
         if data.len() < BSIZE {
             let padding = vec![0u8; BSIZE - data.len()];
             self.file.write_all(&padding)?;
@@ -64,7 +134,6 @@ impl Mkfs {
         self.file.read_exact(buf)
     }
 
-    // Helper to calculate which block an inode lives in
     fn iblock(&self, inum: u32) -> u32 {
         inum / IPB as u32 + self.sb.inodestart
     }
@@ -73,10 +142,13 @@ impl Mkfs {
         let mut buf = [0u8; BSIZE];
         self.read_sector(self.iblock(inum), &mut buf)?;
         let offset = (inum as usize % IPB) * mem::size_of::<Dinode>();
-        
+
         let mut dinode = Dinode::default();
         unsafe {
-            let slice = core::slice::from_raw_parts_mut(&mut dinode as *mut _ as *mut u8, mem::size_of::<Dinode>());
+            let slice = core::slice::from_raw_parts_mut(
+                &mut dinode as *mut _ as *mut u8,
+                mem::size_of::<Dinode>(),
+            );
             slice.copy_from_slice(&buf[offset..offset + mem::size_of::<Dinode>()]);
         }
         Ok(dinode)
@@ -86,18 +158,21 @@ impl Mkfs {
         let mut buf = [0u8; BSIZE];
         self.read_sector(self.iblock(inum), &mut buf)?;
         let offset = (inum as usize % IPB) * mem::size_of::<Dinode>();
-        
+
         unsafe {
-            let src = core::slice::from_raw_parts(dinode as *const _ as *const u8, mem::size_of::<Dinode>());
+            let src = core::slice::from_raw_parts(
+                dinode as *const _ as *const u8,
+                mem::size_of::<Dinode>(),
+            );
             buf[offset..offset + mem::size_of::<Dinode>()].copy_from_slice(src);
         }
         self.write_sector(self.iblock(inum), &buf)
     }
 
-    fn ialloc(&mut self, itype: u16) -> io::Result<u32> {
+    fn ialloc(&mut self, itype: i16) -> io::Result<u32> {
         let inum = self.free_inode;
         self.free_inode += 1;
-        
+
         let mut din = Dinode::default();
         din.itype = itype;
         din.nlink = 1;
@@ -114,8 +189,8 @@ impl Mkfs {
 
         while p_offset < n {
             let fbn = off / BSIZE;
-            assert!(fbn < MAXFILE);
-            
+            assert!(fbn < MAXFILE, "file too large");
+
             let target_block: u32;
             if fbn < NDIRECT {
                 if din.addrs[fbn] == 0 {
@@ -124,20 +199,37 @@ impl Mkfs {
                 }
                 target_block = din.addrs[fbn];
             } else {
-                // Indirect block logic...
-                // (Follow the logic from mkfs.c using read_sector/write_sector)
-                unimplemented!("Indirect blocks not in this snippet");
+                // Indirect block
+                if din.addrs[NDIRECT] == 0 {
+                    din.addrs[NDIRECT] = self.free_block;
+                    self.free_block += 1;
+                }
+                let mut indirect = [0u8; BSIZE];
+                self.read_sector(din.addrs[NDIRECT], &mut indirect)?;
+                let idx = fbn - NDIRECT;
+                let entry_off = idx * mem::size_of::<u32>();
+                let mut blk = u32::from_ne_bytes(
+                    indirect[entry_off..entry_off + 4].try_into().unwrap(),
+                );
+                if blk == 0 {
+                    blk = self.free_block;
+                    self.free_block += 1;
+                    indirect[entry_off..entry_off + 4]
+                        .copy_from_slice(&blk.to_ne_bytes());
+                    self.write_sector(din.addrs[NDIRECT], &indirect)?;
+                }
+                target_block = blk;
             }
 
             let n1 = std::cmp::min(n - p_offset, (fbn + 1) * BSIZE - off);
             let mut buf = [0u8; BSIZE];
             self.read_sector(target_block, &mut buf)?;
-            
+
             let buf_off = off - (fbn * BSIZE);
             buf[buf_off..buf_off + n1].copy_from_slice(&data[p_offset..p_offset + n1]);
-            
+
             self.write_sector(target_block, &buf)?;
-            
+
             off += n1;
             p_offset += n1;
         }
@@ -159,19 +251,22 @@ fn main() -> io::Result<()> {
     // Zero out the whole file first
     let zeroes = vec![0u8; BSIZE];
     for i in 0..FSSIZE {
-        mkfs.write_sector(i as u32, &zeroes)?;
+        mkfs.write_sector(i, &zeroes)?;
     }
 
     // Write superblock to sector 1
     let mut sb_buf = vec![0u8; BSIZE];
     unsafe {
-        let src = core::slice::from_raw_parts(&mkfs.sb as *const _ as *const u8, mem::size_of::<Superblock>());
+        let src = core::slice::from_raw_parts(
+            &mkfs.sb as *const _ as *const u8,
+            mem::size_of::<Superblock>(),
+        );
         sb_buf[..src.len()].copy_from_slice(src);
     }
     mkfs.write_sector(1, &sb_buf)?;
 
     // Create root directory
-    let root_ino = mkfs.ialloc(T_DIR as u16)?;
+    let root_ino = mkfs.ialloc(T_DIR)?;
     assert_eq!(root_ino, ROOTINO);
 
     // Add . and ..
@@ -179,7 +274,7 @@ fn main() -> io::Result<()> {
     de.inum = root_ino as u16;
     de.set_name(".");
     mkfs.iappend(root_ino, de.as_bytes())?;
-    
+
     de.set_name("..");
     mkfs.iappend(root_ino, de.as_bytes())?;
 
@@ -191,8 +286,8 @@ fn main() -> io::Result<()> {
             display_name = &display_name[1..];
         }
 
-        let inum = mkfs.ialloc(T_FILE as u16)?;
-        
+        let inum = mkfs.ialloc(T_FILE)?;
+
         let mut de = Dirent::default();
         de.inum = inum as u16;
         de.set_name(display_name);

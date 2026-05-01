@@ -48,10 +48,14 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "arch",
+ "console",
+ "drivers",
+ "fs",
  "mm",
  "param",
  "proc",
  "sync",
+ "syscall",
  "types",
 ]
 

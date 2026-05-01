@@ -105,7 +105,7 @@ pub unsafe fn ideintr() {
     (*b).flags |= B_VALID;
     (*b).flags &= !B_DIRTY;
     
-    extern "C" { fn wakeup(chan: *const core::ffi::c_void); }
+    unsafe extern "C" { fn wakeup(chan: *const core::ffi::c_void); }
     wakeup(b as *const _);
 
     // Start disk on next buf in queue
@@ -130,9 +130,9 @@ pub unsafe fn iderw(b: *mut Buf) {
 
     // Append b to idequeue
     (*b).qnext = ptr::null_mut();
-    let mut pp = &mut IDE_QUEUE;
+    let mut pp: *mut *mut Buf = &raw mut IDE_QUEUE;
     while !(*pp).is_null() {
-        pp = &mut (**pp).qnext;
+        pp = &raw mut (**pp).qnext;
     }
     *pp = b;
 
@@ -142,11 +142,11 @@ pub unsafe fn iderw(b: *mut Buf) {
     }
 
     // Wait for request to finish
-    extern "C" { 
-        fn sleep(chan: *const core::ffi::c_void, lock: *mut Spinlock<()>); 
+    unsafe extern "C" { 
+        unsafe fn sleep(chan: *const core::ffi::c_void, lock: *mut Spinlock<()>); 
     }
     while ((*b).flags & (B_VALID | B_DIRTY)) != B_VALID {
         // We have to pass the raw lock inside our Spinlock wrapper to sleep
-        sleep(b as *const _, &IDE_LOCK as *const _ as *mut _);
+        sleep(b as *const _, &raw const IDE_LOCK as *mut _);
     }
 }

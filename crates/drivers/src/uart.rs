@@ -71,8 +71,8 @@ pub unsafe fn uartputc(c: i32) {
     outb(COM1 + 0, c as u8);
 }
 
-/// Internal helper to grab a character if available.
-unsafe fn uartgetc() -> i32 {
+/// Grab a character from UART if available; returns -1 if none.
+pub unsafe fn uartgetc() -> i32 {
     if !UART_EXISTS {
         return -1;
     }
@@ -89,8 +89,8 @@ unsafe fn uartgetc() -> i32 {
 pub unsafe fn uartintr() {
     // console::intr needs a function pointer to uartgetc.
     // In Rust, we can pass a wrapper or the function itself.
-    extern "C" {
-        fn consoleintr(getc: unsafe fn() -> i32);
+    unsafe extern "C" {
+        unsafe fn consoleintr(getc: unsafe fn() -> i32);
     }
     consoleintr(uartgetc);
 }

@@ -4,9 +4,9 @@ use param::BSIZE;
 
 // These symbols are typically provided by objcopy or the linker 
 // when embedding a binary file (like fs.img).
-extern "C" {
-    static _binary_fs_img_start: u8;
-    static _binary_fs_img_size: usize;
+unsafe extern "C" {
+    unsafe static _binary_fs_img_start: u8;
+    unsafe static _binary_fs_img_size: usize;
 }
 
 static mut DISKSIZE: u32 = 0;

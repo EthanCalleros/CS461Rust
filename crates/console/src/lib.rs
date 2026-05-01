@@ -114,8 +114,8 @@ static mut INPUT: Input = Input {
 };
 static INPUT_LOCK: Spinlock<()> = Spinlock::new((), "input");
 
-#[no_mangle]
-pub unsafe fn consoleintr(getc: unsafe fn() -> i32) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn consoleintr(getc: unsafe fn() -> i32) {
     let _guard = INPUT_LOCK.acquire();
     
     while let c = getc() {
@@ -142,7 +142,8 @@ pub unsafe fn consoleintr(getc: unsafe fn() -> i32) {
                     
                     if ch == b'\n' || ch == 4 || INPUT.e == INPUT.r + INPUT_BUF_SIZE {
                         INPUT.w = INPUT.e;
-                        // wakeup(&INPUT.r);
+                        unsafe extern "C" { fn wakeup(chan: *const core::ffi::c_void); }
+                        wakeup(&raw const INPUT.r as *const core::ffi::c_void);
                     }
                 }
             }

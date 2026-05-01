@@ -1,8 +1,8 @@
 //! On-disk file system format (port of fs.h).
+//!
 //! Both the kernel and user programs use these definitions.
+//! All types are `#[repr(C)]` for ABI compatibility with the on-disk format.
 
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
 #![allow(dead_code)]
 
 use types::uint;
@@ -17,9 +17,14 @@ pub const MAXFILE: usize = NDIRECT + NINDIRECT;
 
 pub const DIRSIZ: usize = 14;
 
+// -----------------------------------------------------------------------
+// On-disk structures
+// -----------------------------------------------------------------------
+
+/// Superblock — describes the disk layout.
+///
 /// Disk layout:
-/// [ boot block | super block | log | inode blocks |
-///                                          free bit map | data blocks]
+/// `[ boot block | super block | log | inode blocks | free bit map | data blocks ]`
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Superblock {
@@ -36,15 +41,15 @@ pub struct Superblock {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Dinode {
-    pub itype:  i16,                        // File type
-    pub major:  i16,                        // Major device number (T_DEV only)
-    pub minor:  i16,                        // Minor device number (T_DEV only)
-    pub nlink:  i16,                        // Number of links to inode
-    pub size:   uint,                       // Size of file (bytes)
-    pub addrs:  [uint; NDIRECT + 1],        // Data block addresses
+    pub itype:  i16,                    // File type (0 = free)
+    pub major:  i16,                    // Major device number (T_DEV only)
+    pub minor:  i16,                    // Minor device number (T_DEV only)
+    pub nlink:  i16,                    // Number of directory links
+    pub size:   uint,                   // Size of file (bytes)
+    pub addrs:  [uint; NDIRECT + 1],    // Data block addresses
 }
 
-/// Directory entry.
+/// Directory entry — a (name, inode number) pair.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Dirent {
@@ -52,10 +57,28 @@ pub struct Dirent {
     pub name: [u8; DIRSIZ],
 }
 
+impl Dirent {
+    /// A zeroed (empty) directory entry.
+    pub const EMPTY: Self = Self {
+        inum: 0,
+        name: [0u8; DIRSIZ],
+    };
+
+    /// Is this slot unused?
+    #[inline]
+    pub fn is_free(&self) -> bool {
+        self.inum == 0
+    }
+}
+
+// -----------------------------------------------------------------------
+// Layout constants (computed at compile time)
+// -----------------------------------------------------------------------
+
 /// Inodes per block.
 pub const IPB: usize = BSIZE / size_of::<Dinode>();
 
-/// Block containing inode i.
+/// Block containing inode `i`.
 #[inline]
 pub const fn iblock(i: u32, sb: &Superblock) -> u32 {
     i / (IPB as u32) + sb.inodestart
@@ -64,7 +87,7 @@ pub const fn iblock(i: u32, sb: &Superblock) -> u32 {
 /// Bitmap bits per block.
 pub const BPB: u32 = (BSIZE * 8) as u32;
 
-/// Block of free map containing bit for block b.
+/// Block of free map containing bit for block `b`.
 #[inline]
 pub const fn bblock(b: u32, sb: &Superblock) -> u32 {
     b / BPB + sb.bmapstart

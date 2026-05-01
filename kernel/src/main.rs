@@ -5,6 +5,8 @@
 #![allow(non_snake_case)]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![allow(static_mut_refs)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
 
 //! Port of xv6's `main.c`.
 //!
@@ -20,6 +22,15 @@
 //!
 //! Both finish by calling `mpmain()`, which loads the IDT, signals
 //! `cpu->started = 1`, and never returns (it enters the scheduler).
+
+// Pull in glue module — provides #[no_mangle] shims for extern "C" symbols.
+mod glue;
+
+// Force the linker to include all crate code (needed for #[no_mangle] exports).
+extern crate fs;
+extern crate drivers;
+extern crate console;
+extern crate syscall;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::Ordering;
@@ -45,10 +56,6 @@ unsafe extern "C" {
     /// First address past the kernel image. Emitted by `kernel.ld`.
     unsafe static end: u8;
 
-    /// Page-table root used by `entry.S` and `entryother.S` before
-    /// kvmalloc() runs. Allocated in assembly.
-    unsafe static mut entrypgdir: u8;
-
     /// `entryother.S` blob — the linker exposes its start and size
     /// symbols when you embed a binary via `objcopy --redefine-sym`.
     unsafe static _binary_entryother_start: u8;
@@ -61,20 +68,6 @@ unsafe extern "C" {
     // ever boots.
     unsafe static mut cpus: [proc::proch::Cpu; param::NCPU as usize];
     unsafe static mut ncpu: i32;
-
-    // Subsystems not yet ported. The order matches xv6's main().
-    unsafe fn picinit();
-    unsafe fn consoleinit();
-    unsafe fn uartinit();
-    unsafe fn pinit();
-    unsafe fn binit();
-    unsafe fn fileinit();
-    unsafe fn ideinit();
-    unsafe fn userinit();
-    unsafe fn scheduler() -> !;
-
-    // Memory move primitive. Will move into a `string` crate eventually.
-    unsafe fn memmove(dst: *mut u8, src: *const u8, n: u32) -> *mut u8;
 }
 
 // =====================================================================
@@ -84,43 +77,73 @@ unsafe extern "C" {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn main() -> ! {
+    // Debug: write stage markers to UART (0x3F8) so we can see how
+    // far boot gets before a crash. QEMU echoes these even without
+    // UART initialisation.
+    dbg_uart(b'A'); // A = entered main
+
     // Phase 1: build the page-list across [end, P2V(4MB)). The
     // address of the linker symbol `end` is the first byte past the
     // loaded kernel image; the range stops at 4 MiB so `mpinit` can
     // still touch BIOS memory below that line.
     let kernel_end = &end as *const u8 as *mut u8;
     kinit1(kernel_end, p2v_ptr::<u8>(4 * 1024 * 1024));
+    dbg_uart(b'B'); // B = kinit1 done
 
     kvmalloc();        // build the kernel page table
+    dbg_uart(b'C'); // C = kvmalloc done
+
     mpinit();          // discover SMP topology
+    dbg_uart(b'D'); // D = mpinit done
+
     lapicinit();       // local APIC on this CPU
+    dbg_uart(b'E'); // E = lapicinit done
+
     seginit();         // GDT + per-CPU TLS
-    picinit();         // mask the legacy 8259 PIC
+    dbg_uart(b'F'); // F = seginit done
+
+    glue::picinit();   // mask the legacy 8259 PIC
     ioapicinit();      // I/O APIC
-    consoleinit();     // console (CRT + keyboard)
-    uartinit();        // serial port
-    pinit();           // process table
+    glue::consoleinit(); // console (CRT + keyboard)
+    glue::uartinit();  // serial port
+    dbg_uart(b'G'); // G = pic/ioapic/console/uart done
+
+    glue::pinit();     // process table
     tvinit();          // trap vectors / IDT
-    binit();           // buffer cache
-    fileinit();        // file table
-    ideinit();         // disk
+    dbg_uart(b'H'); // H = pinit/tvinit done
+
+    glue::binit();     // buffer cache
+    glue::fileinit();  // file table
+    glue::ideinit();   // disk
+    dbg_uart(b'I'); // I = binit/fileinit/ideinit done
 
     startothers();     // boot the other CPUs
+    dbg_uart(b'J'); // J = startothers done
 
     // Phase 2: extend the allocator across the rest of physical RAM.
     // MUST come after startothers() — the AP startup blob lives in low
     // memory and we mustn't free it until the APs have copied off.
-    //
-    // xv6-master folds this `freerange` into `kinit2(vstart, vend)`;
-    // the kalloc.rs you ported keeps `kinit2()` signature-free, so we
-    // do the freerange explicitly and then flip `use_lock`.
     freerange(p2v_ptr::<u8>(4 * 1024 * 1024), p2v_ptr::<u8>(PHYSTOP));
     kinit2();
+    dbg_uart(b'K'); // K = kinit2 done
 
     syscallinit();     // SYSCALL/SYSRET MSRs
-    userinit();        // first user process (init)
+    glue::userinit();  // first user process (init)
+    dbg_uart(b'L'); // L = userinit done
 
     mpmain();          // never returns
+}
+
+/// Write a single byte to COM1 (0x3F8) for debug tracing.
+/// Works even before uartinit() on QEMU.
+#[inline(always)]
+unsafe fn dbg_uart(c: u8) {
+    core::arch::asm!(
+        "out dx, al",
+        in("dx") 0x3F8u16,
+        in("al") c,
+        options(nomem, nostack, preserves_flags),
+    );
 }
 
 // =====================================================================
@@ -151,7 +174,7 @@ pub unsafe extern "C" fn mpmain() -> ! {
     let cpu = my_cpu();
     cpu.started.store(1, Ordering::SeqCst);
 
-    scheduler();
+    glue::scheduler();
 }
 
 // =====================================================================
@@ -163,7 +186,7 @@ unsafe fn startothers() {
     // entryother.S relocates itself to physical 0x7000.
     let code: *mut u8 = p2v_ptr::<u8>(0x7000);
     let size = &_binary_entryother_size as *const u8 as u32;
-    memmove(code, &_binary_entryother_start as *const u8, size);
+    glue::memmove(code, &_binary_entryother_start as *const u8, size);
 
     let me = my_cpu() as *const proc::proch::Cpu;
 
@@ -179,13 +202,12 @@ unsafe fn startothers() {
         // the negative offsets entryother.S reads:
         //   [code-8]  : top of the AP's kernel stack
         //   [code-16] : function to jump to (mpenter)
-        //   [code-24] : V2P(pgdir) — entrypgdir while we're still in
-        //               low memory
-        let stack = kalloc();
+        //   [code-24] : V2P(pgdir) — the bootstrap PML4 at phys 0x1000
+        let stack = mm::kalloc::kalloc();
         *(code.offset(-8)  as *mut u64) = stack as u64 + KSTACKSIZE;
         *(code.offset(-16) as *mut u64) = mpenter as u64;
-        *(code.offset(-24) as *mut u64) =
-            (&raw const entrypgdir as u64).wrapping_sub(mm::memlayout::KERNBASE);
+        // entry.S creates bootstrap page tables at physical 0x1000
+        *(code.offset(-24) as *mut u64) = 0x1000;
 
         lapicstartap((*c).apicid as u8, code as u32);
 
@@ -196,18 +218,23 @@ unsafe fn startothers() {
     }
 }
 
-// =====================================================================
-// Linker still needs `_start` until entry.S is wired up. Once the
-// boot path calls `main` directly, this can be removed.
-// =====================================================================
-
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
-    unsafe { main() }
-}
+// NOTE: `_start` is now provided by entry.S (via global_asm! in the
+// arch crate). entry.S jumps to `main` after setting up long mode and
+// the initial stack. No Rust `_start` shim is needed.
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
+    // Write "PANIC\n" to UART so we see it even without console init.
+    unsafe {
+        for &b in b"PANIC\n" {
+            core::arch::asm!(
+                "out dx, al",
+                in("dx") 0x3F8u16,
+                in("al") b,
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+    }
     loop {
         core::hint::spin_loop();
     }

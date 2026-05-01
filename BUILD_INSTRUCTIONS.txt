@@ -1,0 +1,185 @@
+xv6-Rust Build Instructions
+============================
+
+This document covers everything needed to compile and run the
+xv6-Rust operating system on Ubuntu / WSL (Windows Subsystem for Linux).
+
+
+1. SYSTEM REQUIREMENTS
+----------------------
+- Ubuntu 20.04+ (native or WSL2 on Windows)
+- Internet access (for initial package/toolchain installation)
+- ~2 GB free disk space
+
+
+2. INSTALL SYSTEM PACKAGES
+--------------------------
+Run the following to install the C cross-toolchain, QEMU, and
+support tools:
+
+    sudo apt update
+    sudo apt install -y \
+        build-essential \
+        gcc \
+        binutils \
+        qemu-system-x86 \
+        perl \
+        make \
+        curl
+
+What each package provides:
+  build-essential  - gcc, g++, make, libc headers
+  gcc / binutils   - assembler (as), linker (ld), objcopy, objdump, ar
+                     Used for the bootblock, initcode, and entryother blobs
+  qemu-system-x86  - qemu-system-x86_64 emulator to run xv6
+  perl             - needed by sign.pl (boot sector signature tool)
+  curl             - needed by the Rust installer
+
+Note: The bootblock requires 32-bit GCC support. On some systems
+you may also need:
+
+    sudo apt install -y gcc-multilib
+
+
+3. INSTALL RUST
+---------------
+If Rust is not already installed:
+
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+Follow the prompts (default installation is fine), then reload
+your shell:
+
+    source $HOME/.cargo/env
+
+The project includes a rust-toolchain.toml that automatically
+selects the correct Rust version and components. On your first
+build, rustup will download:
+  - Rust stable channel
+  - x86_64-unknown-none target  (bare-metal kernel target)
+  - rust-src component          (needed for core library)
+
+You can verify everything is set up with:
+
+    rustup show
+    rustc --version
+    cargo --version
+
+
+4. BUILD
+--------
+Navigate to the xv6 workspace root:
+
+    cd /mnt/c/Users/ecall/Documents/CS461/xv6-Rust/xv6
+    (or wherever the xv6/ directory lives on your machine)
+
+Full clean build:
+
+    make clean && make
+
+This produces:
+  build/bootblock    - 512-byte boot sector
+  build/kernel.elf   - kernel ELF binary
+  fs.img             - filesystem image with user programs
+  xv6.img            - bootable disk image (bootblock + kernel)
+
+Individual build steps (if needed):
+
+    cargo build -p kernel                     # kernel only
+    cargo build -p user --release             # user programs only
+    cd mkfs && cargo build --release && cd .. # mkfs host tool only
+    make bootblock                            # bootblock only
+
+
+5. RUN IN QEMU
+--------------
+Graphical window (VGA + serial on stdio):
+
+    make qemu
+
+Text-only (serial console, no GUI window):
+
+    make qemu-nox
+
+To exit QEMU:
+  - qemu-nox:  press Ctrl-A then X
+  - qemu GUI:  close the window, or Ctrl-C in the terminal
+
+Debug mode (stops on crash instead of rebooting, logs to file):
+
+    make qemu-debug
+    # Check qemu-debug.log for exception/interrupt details
+
+GDB debugging:
+
+    make qemu-gdb          # starts QEMU paused, waiting for GDB
+    # In another terminal:
+    gdb build/kernel.elf
+    (gdb) target remote :25000
+    (gdb) continue
+
+
+6. COMMON ISSUES
+----------------
+
+"cargo: command not found"
+  → Run: source $HOME/.cargo/env
+    Or add to your .bashrc: export PATH="$HOME/.cargo/bin:$PATH"
+
+"gcc: error: unrecognized command-line option '-m32'"
+  → Install 32-bit support: sudo apt install gcc-multilib
+
+"error: linker 'rust-lld' not found"
+  → Update Rust: rustup update
+
+"clock skew detected" warnings (WSL only)
+  → This is harmless when building on /mnt/c. You can ignore it,
+    or copy the source tree to the Linux filesystem (e.g. ~/xv6)
+    to avoid it:
+        cp -r /mnt/c/Users/.../xv6 ~/xv6
+        cd ~/xv6 && make clean && make
+
+"boot block too large" from sign.pl
+  → The bootblock exceeds 510 bytes. Check bootmain.c for extra
+    includes or code that inflates the binary.
+
+QEMU resets in a loop / no output
+  → Run: make qemu-debug
+    Check qemu-debug.log for the exception that causes the reset.
+    The kernel prints stage markers (A, B, C, ...) to the serial
+    port during boot. If you see some letters before the crash,
+    they indicate how far init got.
+
+"Out of memory!" panic
+  → The kernel's physical memory allocator ran out of pages.
+    Check that PHYSTOP in crates/mm/src/memlayout.rs matches your
+    QEMU memory size (-m flag in QEMUOPTS in the Makefile).
+
+
+7. PROJECT STRUCTURE
+--------------------
+xv6/
+  Cargo.toml          - workspace manifest (kernel-side crates)
+  Makefile             - top-level build orchestration
+  kernel.ld            - linker script (kernel at 0xFFFF800000100000)
+  .cargo/config.toml   - cargo config (target, rustflags, aliases)
+  rust-toolchain.toml  - pinned Rust toolchain version
+
+  kernel/              - kernel binary crate (main.rs, glue.rs)
+  boot/                - bootmain.c (boot loader C code)
+  mkfs/                - host-side filesystem image builder
+
+  crates/
+    arch/              - x86_64 assembly, MMU, LAPIC, IOAPIC, VM
+    mm/                - physical memory allocator, memlayout
+    sync/              - spinlocks
+    proc/              - process management, scheduler
+    fs/                - filesystem, buffer cache, files
+    drivers/           - UART, IDE disk, keyboard
+    console/           - console I/O (CGA + serial)
+    syscall/           - system call dispatch
+    types/             - shared type aliases
+    param/             - kernel parameters (NCPU, NPROC, etc.)
+    ulib/              - user-space library
+    bootblock/         - (unused, bootblock built via Makefile)
+  user/                - user programs (sh, ls, cat, etc.)

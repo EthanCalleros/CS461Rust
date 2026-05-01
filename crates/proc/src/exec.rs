@@ -8,7 +8,7 @@ use core::ptr;
 
 use arch::elf::{elfhdr, proghdr, ELF_MAGIC, ELF_PROG_LOAD};
 use arch::mmu::{PGROUNDUP, PGSIZE};
-use arch::vm::{allocuvm, clearpteu, copyout, freevm, loaduvm, setupkvm, switchuvm};
+use arch::vm::{self, allocuvm, clearpteu, copyout, freevm, loaduvm, setupkvm, switchuvm};
 use param::MAXARG;
 use types::{addr_t, pde_t};
 
@@ -131,7 +131,7 @@ pub unsafe extern "C" fn exec(path: *const u8, argv: *const *const u8) -> i32 {
             goto_bad(&mut pgdir, &mut ip);
             return -1;
         }
-        if loaduvm(pgdir, ph.vaddr, ip, ph.off as u32, ph.filesz as u32) < 0 {
+        if loaduvm(pgdir, ph.vaddr, ip as *mut _ as *mut vm::inode, ph.off as u32, ph.filesz as u32) < 0 {
             goto_bad(&mut pgdir, &mut ip);
             return -1;
         }

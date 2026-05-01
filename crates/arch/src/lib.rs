@@ -6,14 +6,19 @@ use core::arch::global_asm;
 // on every `global_asm!` invocation rather than emitting an
 // `.att_syntax` directive inside each `.S` file (which trips rustc's
 // `bad_asm_style` lint).
-global_asm!(include_str!("asm/swtch.S"),       options(att_syntax));
+//
+// IMPORTANT: Only include assembly that belongs in the kernel binary.
+// These are separate binaries and must NOT be included here:
+//   - bootasm.S   → belongs in the bootblock crate (separate 512-byte binary at 0x7c00)
+//   - initcode.S  → assembled separately, embedded as a byte array in the kernel
+//   - entryother.S → assembled separately, copied to 0x7000 at runtime for AP boot
+//   - usys.S      → user-space syscall stubs, linked into user programs only
+//
+// Kernel-side assembly:
 global_asm!(include_str!("asm/entry.S"),       options(att_syntax));
-global_asm!(include_str!("asm/entryother.S"),  options(att_syntax));
+global_asm!(include_str!("asm/swtch.S"),       options(att_syntax));
 global_asm!(include_str!("asm/trapasm.S"),     options(att_syntax));
-global_asm!(include_str!("asm/initcode.S"),    options(att_syntax));
 global_asm!(include_str!("asm/vectors.S"),     options(att_syntax));
-global_asm!(include_str!("asm/usys.S"),        options(att_syntax));
-global_asm!(include_str!("asm/bootasm.S"),     options(att_syntax));
 
 pub mod elf;
 pub mod ioapic;

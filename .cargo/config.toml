@@ -23,7 +23,7 @@ target = "x86_64-unknown-none"
 # crates.
 [target.x86_64-unknown-none]
 rustflags = [
-    "-C", "code-model=kernel",
+    "-C", "code-model=large",
     "-C", "relocation-model=static",
 ]
 
@@ -40,6 +40,6 @@ rustflags = [
 # cargo's config.toml lookup is based on the working directory, not
 # the manifest path, so a `cargo mkfs` invoked from here would
 # otherwise inherit the bare-metal target.
-mkfs    = "build --manifest-path mkfs/Cargo.toml --release --target x86_64-pc-windows-msvc"
+mkfs    = "build --manifest-path mkfs/Cargo.toml --release --target x86_64-unknown-linux-gnu"
 kbuild  = "build -p kernel"
 kcheck  = "check -p kernel"

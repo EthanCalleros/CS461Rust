@@ -1,5 +1,7 @@
 #![no_std]
 #![no_main]
+#![allow(static_mut_refs)]
+#![allow(deref_nullptr)]
 
 use ulib::*;
 
